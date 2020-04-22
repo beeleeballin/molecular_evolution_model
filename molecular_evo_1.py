@@ -38,7 +38,7 @@ codon_map = {}  # dictionary: codon -> AA
 alignment_map = {}  # dictionary: animal -> DNA sequence
 sim_map = {}  # dictionary: pos on aligned sequence -> similarity rate
 
-TRIALS = 2  # no. of experimental trials
+TRIALS = 10  # no. of experimental trials
 MUTATION_RATE = .15  # mutation rate
 
 
@@ -54,6 +54,7 @@ def main():
     animals = create_alignment_map()  # instantiate a reference for animals' DNA sequences
     sim_nuc = create_sim_map(animals)  # instantiate a reference for the mutation rate of each nuc pos
 
+    # print("translate function is: "+str(calc_identity(translate(orig_DNA_seq), orig_prot_seq)))
 
     # # Conduct TRIALS no. of experiments using strategy 1 & 2
     # print("Results for random mutation strategy\n")
@@ -192,6 +193,7 @@ def create_sim_map(align_ref):
 #############################################################################
 def rand_nuc(choice):
     new_choice = random.choice(['A', 'C', 'T', 'G'])
+    # prevent it to change into the same nuc
     while choice == new_choice:
         new_choice = random.choice(['A', 'C', 'T', 'G'])
     return new_choice
@@ -239,6 +241,7 @@ def sim_at_pos(ref):
         if (pos - 2) % 3 == 0:
             count_3 += 1
             sim_rate_3 += sim_map[pos]
+
     per_id = [sim_rate_1/count_1, sim_rate_2/count_2, sim_rate_3/count_3]
 
     return per_id
@@ -272,10 +275,8 @@ def strategy1(DNA_seq, prot_seq):
 
     for nuc in DNA_seq:
         if random.random() < MUTATION_RATE:
-            # randomly mutate nuc to a new nucleotide
-            new_nuc = rand_nuc(nuc)
-            print("s1: old " + nuc + " new " + new_nuc)
-            new_DNA_seq += new_nuc
+            # randomly mutate nuc
+            new_DNA_seq += rand_nuc(nuc)
         else:
             # append original nucleotide to new sequence
             new_DNA_seq += nuc
@@ -301,11 +302,11 @@ def strategy2(DNA_seq, prot_seq):
     for count, nuc in enumerate(DNA_seq, 1):
         # mutation rate apply to all 3rd position nuc
         if count % 3 == 0:
-            if random.random() < MUTATION_RATE:
-                # randomly mutate nuc to a new nucleotide (A, C, G, T)
-                new_nuc = rand_nuc(nuc)
-                print("s2: old "+nuc+" new "+new_nuc)
-                new_DNA_seq += new_nuc
+            # the overall mutation should still be MUTATION_RATE
+            # it is higher in this position to maintain the overall rate
+            if random.random() < MUTATION_RATE*3:
+                # randomly mutate nuc
+                new_DNA_seq += rand_nuc(nuc)
             else:
                 # append original nucleotide to new sequence
                 new_DNA_seq += nuc
