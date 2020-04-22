@@ -36,7 +36,7 @@ align_file = path + "hsp70_alignments.fasta.txt"  # alignment files
 
 codon_map = {}  # dictionary: codon -> AA
 alignment_map = {}  # dictionary: animal -> DNA sequence
-sim_map = {}  # dictionary: pos on aligned sequence -> similarity rate
+var_map = {}  # dictionary: pos on aligned sequence -> similarity rate
 
 TRIALS = 10  # no. of experimental trials
 MUTATION_RATE = .15  # mutation rate
@@ -52,7 +52,7 @@ def main():
 
     create_codon_map()  # instantiate a reference for translating codons into aa
     animals = create_alignment_map()  # instantiate a reference for animals' DNA sequences
-    sim_nuc = create_sim_map(animals)  # instantiate a reference for the mutation rate of each nuc pos
+    nuc_aligned = create_var_map(animals)  # instantiate a reference for the mutation rate of each nuc pos
 
     # print("translate function is: "+str(calc_identity(translate(orig_DNA_seq), orig_prot_seq)))
 
@@ -88,13 +88,15 @@ def main():
     print(" - a " + str(round(avg_id_1*100)) + "% identity similarity when all positions are subjected to mutation")
     print(" - a " + str(round(avg_id_2*100)) + "% identity similarity when only the 3rd positions are subjected to mutation")
 
+
+
     # calculate the rate of having a similar nuc among the 6 animal DNA
     # sequences at each of the 3 positions on a possible codon
-    print("\nBased on the animal HSP40 proteins, our model suggests that the rate of mutation at each position in a codon varies:\n")
-    percent_id = sim_at_pos(sim_nuc)
-    print(" - the identity similarity in position 1 is " + str(round(percent_id[0]*100))
-          + "%\n - the identity similarity in position 2 is " + str(round(percent_id[1]*100))
-          + "%\n - the identity similarity in position 3 is " + str(round(percent_id[2]*100))
+    percent_id = var_at_pos(nuc_aligned)
+    print("\nThe animal HSP70 proteins show difference in the variance at each position in a codon:\n")
+    print(" - the variance in position 1 is " + str(round(percent_id[0]*100))
+          + "%, position 2 is " + str(round(percent_id[1]*100))
+          + "%, position 3 is " + str(round(percent_id[2]*100))
           + "%")
 
 
@@ -152,39 +154,43 @@ def create_alignment_map():
 # initializes a dictionary to reference the rate of getting a similar nuc
 # given the nuc position
 #############################################################################
-def create_sim_map(align_ref):
+def create_var_map(align_ref):
 
-    sim_ref = []
+    # records the indices with no gaps for evaluation
+    var_ref = []
     # if there exists a nuc on a certain pos across DNAs of all animals
     aligned_seq_length = len(alignment_map[align_ref[0]])  # 2282
 
     for pos in range(aligned_seq_length):
         gap = False
         for ref in align_ref:
+            # ignore if there if an animal has a gap at that pos
             if alignment_map[ref][pos] == '-':
                 # print(animal+" "+str(pos))
-                gap = True;
-                break;
+                gap = True
+                break
         if not gap:
-            sim_ref.append(pos)
+            var_ref.append(pos)
 
     # print(not_gap)  # the indices to be measured
     # print(str(len(not_gap))+" pos out of "+str(aligned_seq_length)+" will be measured")
     # print(animals)  # all animals
 
     # the similarity at recorded pos
-    for pos in sim_ref:
-        sim = 0
+    for pos in var_ref:
+        var = 0
+        # pick an animal from the list
         for ref_1 in align_ref:
+            # pick another animal downstream of the first animal
             for ref_2 in align_ref[align_ref.index(ref_1)+1:]:
                 #print(ani_1+" compared to "+ani_2+" at pos "+str(pos))
-                if alignment_map[ref_1][pos] == alignment_map[ref_2][pos]:
-                    sim += 1
+                if alignment_map[ref_1][pos] != alignment_map[ref_2][pos]:
+                    var += 1
         # print("there are "+str(sim)+" out of "+str(len(animals)*5/2)+" nucleotides that are same at "+str(pos))
-        sim_rate = sim / (len(align_ref)*5/2)  # similar/total
-        sim_map[pos] = sim_rate
+        variance = var / (len(align_ref)*5/2)  # variance/total
+        var_map[pos] = variance
 
-    return sim_ref
+    return var_ref
 
 
 #############################################################################
@@ -228,21 +234,21 @@ def calc_identity(seq1, seq2):
 # calculates the rate of getting a similar nuc at a nuc site post DNA
 # alignment with respect to its position on a codon
 #############################################################################
-def sim_at_pos(ref):
-    count_1 = sim_rate_1 = count_2 = sim_rate_2 = count_3 = sim_rate_3 = 0
+def var_at_pos(ref):
+    count_1 = var_rate_1 = count_2 = var_rate_2 = count_3 = var_rate_3 = 0
 
     for pos in ref:
         if pos % 3 == 0:
             count_1 += 1
-            sim_rate_1 += sim_map[pos]
+            var_rate_1 += var_map[pos]
         if (pos - 1) % 3 == 0:
             count_2 += 1
-            sim_rate_2 += sim_map[pos]
+            var_rate_2 += var_map[pos]
         if (pos - 2) % 3 == 0:
             count_3 += 1
-            sim_rate_3 += sim_map[pos]
+            var_rate_3 += var_map[pos]
 
-    per_id = [sim_rate_1/count_1, sim_rate_2/count_2, sim_rate_3/count_3]
+    per_id = [var_rate_1/count_1, var_rate_2/count_2, var_rate_3/count_3]
 
     return per_id
 
