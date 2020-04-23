@@ -35,10 +35,10 @@ aa_file = path + "hsp70_aa.fasta.txt"  # protein sequences
 align_file = path + "hsp70_alignments.fasta.txt"  # alignment files
 
 codon_map = {}  # dictionary: codon -> AA
-alignment_map = {}  # dictionary: animal -> DNA sequence
+DNA_map = {}  # dictionary: animal -> DNA sequence
 var_map = {}  # dictionary: pos on aligned sequence -> similarity rate
 
-TRIALS = 10  # no. of experimental trials
+TRIALS = 100  # no. of experimental trials
 MUTATION_RATE = .15  # mutation rate
 
 
@@ -51,24 +51,9 @@ def main():
     orig_prot_seq = read_fasta(aa_file)
 
     create_codon_map()  # instantiate a reference for translating codons into aa
-    animals = create_alignment_map()  # instantiate a reference for animals' DNA sequences
-    nuc_aligned = create_var_map(animals)  # instantiate a reference for the mutation rate of each nuc pos
-
-    # print("translate function is: "+str(calc_identity(translate(orig_DNA_seq), orig_prot_seq)))
-
-    # # Conduct TRIALS no. of experiments using strategy 1 & 2
-    # print("Results for random mutation strategy\n")
-    # print("Trial, % identity\n")
-    # for trial in range(TRIALS):
-    #     percent_id = strategy1(orig_DNA_seq, orig_prot_seq)
-    #     print("Trial "+str(trial + 1) + ", " + str(percent_id))
-    # print("\n")
-    # print("Results for 3rd codon position mutation strategy\n")
-    # print("Trial, % identity\n")
-    # for trial in range(TRIALS):
-    #     percent_id = strategy2(orig_DNA_seq, orig_prot_seq)
-    #     print(str(trial + 1) + ", " + str(percent_id))
-    # print("\n")
+    animals = create_DNA_map()  # instantiate and save a reference to access animals' DNA
+    # nuc_aligned = create_var_map(animals)  # instantiate and save a reference for the identity of each nuc pos
+    create_var_map(animals)  # instantiate and save a reference for the variance of each nuc pos
 
     # calculate average percent identity at set mutation rate
     tot_id_1 = 0
@@ -83,20 +68,26 @@ def main():
     avg_id_1 = tot_id_1/TRIALS
     avg_id_2 = tot_id_2/TRIALS
 
-    print("\nOur model suggests that the prevalence of non-synonymous mutation depends on the nucleotide position in a codon:")
-    print("---- after " + str(TRIALS) + " trials at a " + str(MUTATION_RATE*100) + "% rate of mutation ----\n")
+    print("\n---- after " + str(TRIALS) + " trials at a " + str(MUTATION_RATE * 100) + "% rate of mutation ----")
+    print("\nOur model suggests the prevalence of non-synonymous mutation depends on the positions in a codon that underwent mutation:")
     print(" - a " + str(round(avg_id_1*100)) + "% identity similarity when all positions are subjected to mutation")
     print(" - a " + str(round(avg_id_2*100)) + "% identity similarity when only the 3rd positions are subjected to mutation")
 
-
+    #
+    percent_id = id_at_pos(id_indices(animals),only_aligned_indices(animals))
+    print("\nThe animal HSP70 proteins show difference in identity similarity at each position in a codon:\n")
+    print(" - the identity similarity in position 1 is " + str(round(percent_id[0] * 100))
+          + "%, position 2 is " + str(round(percent_id[1] * 100))
+          + "%, position 3 is " + str(round(percent_id[2] * 100))
+          + "%")
 
     # calculate the rate of having a similar nuc among the 6 animal DNA
     # sequences at each of the 3 positions on a possible codon
-    percent_id = var_at_pos(nuc_aligned)
+    percent_var = var_at_pos(animals)
     print("\nThe animal HSP70 proteins show difference in the variance at each position in a codon:\n")
-    print(" - the variance in position 1 is " + str(round(percent_id[0]*100))
-          + "%, position 2 is " + str(round(percent_id[1]*100))
-          + "%, position 3 is " + str(round(percent_id[2]*100))
+    print(" - the variance in position 1 is " + str(round(percent_var[0]*100))
+          + "%, position 2 is " + str(round(percent_var[1]*100))
+          + "%, position 3 is " + str(round(percent_var[2]*100))
           + "%")
 
 
@@ -118,79 +109,139 @@ def create_codon_map():
 
 
 #############################################################################
-# create_alignment_map
+# create_DNA_map
 # initializes dictionary to lookup the aligned DNA sequence given an animal
+# returns a list of animal references
 #############################################################################
-def create_alignment_map():
+def create_DNA_map():
     in_file = open(align_file, 'r')
 
     # hold the name and nuc sequence before save it to the dictionary
-    name = ""
-    sequence = ""
-    ref = []
+    title = ""
+    content = ""
+    title_ref = []
 
+    # go line by line
     for line in in_file:
         match = re.search(r'^>(\w+)', line)
-        # found tag ine
+        # found a tag ine
         if match:
-            sequence = ""
-            name = match.group(1)  # save the new animal name
-            ref.append(name)  # add it to animals[] for reference
-        # found sequence line
+            content = ""  # reset sequence
+            title = match.group(1)  # hold the new name
+            title_ref.append(title)  # add ref to list for later
+        # found a sequence line
         else:
-            sequence += line.upper().rstrip('\n')  # reformat DNA
-            alignment_map[name] = sequence  # map name to updated DNA
+            content += line.upper().rstrip('\n')  # reformat the content
+            DNA_map[title] = content  # map ref to updated content
 
     in_file.close()
-    # for animal in animals:
-    #     print(animal)
-    #     print(alignment_map[animal])
 
-    return ref
+    return title_ref
 
 
 #############################################################################
-# create_mutation_rate_map
-# initializes a dictionary to reference the rate of getting a similar nuc
-# given the nuc position
+# create_var_map
+# initializes a dictionary to reference the variance at the position where there is a nuc
 #############################################################################
-def create_var_map(align_ref):
+def create_var_map(ref_list):
 
-    # records the indices with no gaps for evaluation
-    var_ref = []
-    # if there exists a nuc on a certain pos across DNAs of all animals
-    aligned_seq_length = len(alignment_map[align_ref[0]])  # 2282
+    # get a list of indices for all DNA positions that have a nuc
+    all_pos = only_aligned_indices(ref_list)
 
-    for pos in range(aligned_seq_length):
+    # the similarity at recorded pos
+    for pos in all_pos:
+        var = 0
+        # pick an animal from the list
+        for ref_1 in ref_list:
+            # pick another animal downstream of the first animal
+            for ref_2 in ref_list[ref_list.index(ref_1)+1:]:
+                if DNA_map[ref_1][pos] != DNA_map[ref_2][pos]:
+                    var += 1
+
+        variance = var / (len(ref_list)*(len(ref_list)-1)/2)  # difference/total
+        var_map[pos] = variance
+
+
+#############################################################################
+# only_aligned_indices
+# finds all the DNA positions that have a nuc and not a gap
+# returns a list of position indices
+#############################################################################
+def only_aligned_indices(ref_list):
+
+    # record the indices of which those DNA associated with the references
+    # on the list have all nucleotides
+    aligned_pos = []
+
+    # length of any sequence (should all be the same)
+    seq_length = len(DNA_map[ref_list[0]])  # 2282
+
+    for pos in range(seq_length):
+        # first suppose there is no gap on the position examined
         gap = False
-        for ref in align_ref:
-            # ignore if there if an animal has a gap at that pos
-            if alignment_map[ref][pos] == '-':
-                # print(animal+" "+str(pos))
+        for ref in ref_list:
+            # ignore the position if any animal has a gap in their DNA at that position
+            if DNA_map[ref][pos] == '-':
                 gap = True
                 break
         if not gap:
-            var_ref.append(pos)
+            aligned_pos.append(pos)
 
-    # print(not_gap)  # the indices to be measured
-    # print(str(len(not_gap))+" pos out of "+str(aligned_seq_length)+" will be measured")
-    # print(animals)  # all animals
+    return aligned_pos
 
-    # the similarity at recorded pos
-    for pos in var_ref:
-        var = 0
-        # pick an animal from the list
-        for ref_1 in align_ref:
-            # pick another animal downstream of the first animal
-            for ref_2 in align_ref[align_ref.index(ref_1)+1:]:
-                #print(ani_1+" compared to "+ani_2+" at pos "+str(pos))
-                if alignment_map[ref_1][pos] != alignment_map[ref_2][pos]:
-                    var += 1
-        # print("there are "+str(sim)+" out of "+str(len(animals)*5/2)+" nucleotides that are same at "+str(pos))
-        variance = var / (len(align_ref)*5/2)  # variance/total
-        var_map[pos] = variance
 
-    return var_ref
+#############################################################################
+# id_ref
+# finds all the DNA positions that have a matching nuc
+# returns a list of position indices
+#############################################################################
+def id_indices(ref_list):
+
+    # get a list of indices for all DNA positions that have a nuc
+    potential_pos = only_aligned_indices(ref_list)
+
+    id_pos = []
+
+    # determine similarity at the recorded pos
+    for pos in potential_pos:
+        mismatch = False
+        for ref in ref_list[1:]:
+            if DNA_map[ref_list[0]][pos] != DNA_map[ref][pos]:
+                mismatch = True
+                break
+        if not mismatch:
+            id_pos.append(pos)
+
+    return id_pos
+
+
+#############################################################################
+# id_at_pos
+# measures the frequency of the identical DNA positions among all the positions that have only nuc
+# returns a list of percentages of identity
+#############################################################################
+def id_at_pos(id, sample):
+
+    count_1 = total_1 = count_2 = total_2 = count_3 = total_3 = 0
+
+    for pos in sample:
+        if pos % 3 == 0:
+            total_1 += 1
+            if pos in id:
+                count_1 += 1
+        elif (pos - 1) % 3 == 0:
+            total_2 += 1
+            if pos in id:
+                count_2 += 1
+        else:
+            total_3 += 1
+            if pos in id:
+                count_3 += 1
+
+    # occurance of identical nuc in the each positions of a codon
+    id_pos = [count_1/total_1, count_2/total_2, count_3/total_3]
+
+    return id_pos
 
 
 #############################################################################
@@ -198,10 +249,12 @@ def create_var_map(align_ref):
 # returns a random nucleotide from A, C, G, or T.
 #############################################################################
 def rand_nuc(choice):
+    # offer a potentially new variant
     new_choice = random.choice(['A', 'C', 'T', 'G'])
-    # prevent it to change into the same nuc
+    # prevent the new variant happen to be the same as the input
     while choice == new_choice:
         new_choice = random.choice(['A', 'C', 'T', 'G'])
+
     return new_choice
 
 
@@ -210,8 +263,9 @@ def rand_nuc(choice):
 # translates DNA strings to proteins
 #############################################################################
 def translate(DNA):
+    # return protein sequence
     pro = ""
-    # all nuc triplets in DNA
+    # convert all nuc triplets in DNA
     for codon in re.findall('[A-Z]{3}', DNA):
         pro += codon_map[codon]
     return pro
@@ -222,7 +276,8 @@ def translate(DNA):
 # calculates the percent identity of the two given sequences.
 #############################################################################
 def calc_identity(seq1, seq2):
-    # tally up the similar aa between 2 sequences, find percentage similarity
+    # tally up the similar aa between 2 sequences
+    # find percentage similarity
     same_codon = sum(codon1 == codon2 for codon1, codon2 in zip(seq1, seq2))
     same_percentage = same_codon/len(seq1)
 
@@ -234,10 +289,14 @@ def calc_identity(seq1, seq2):
 # calculates the rate of getting a similar nuc at a nuc site post DNA
 # alignment with respect to its position on a codon
 #############################################################################
-def var_at_pos(ref):
+def var_at_pos(ref_list):
+
+    # get a list of indices for all DNA positions that have a nuc
+    all_pos = only_aligned_indices(ref_list)
+
     count_1 = var_rate_1 = count_2 = var_rate_2 = count_3 = var_rate_3 = 0
 
-    for pos in ref:
+    for pos in all_pos:
         if pos % 3 == 0:
             count_1 += 1
             var_rate_1 += var_map[pos]
@@ -248,9 +307,10 @@ def var_at_pos(ref):
             count_3 += 1
             var_rate_3 += var_map[pos]
 
-    per_id = [var_rate_1/count_1, var_rate_2/count_2, var_rate_3/count_3]
+    # average variance at each position in a codon
+    avg_var = [var_rate_1/count_1, var_rate_2/count_2, var_rate_3/count_3]
 
-    return per_id
+    return avg_var
 
 
 #############################################################################
